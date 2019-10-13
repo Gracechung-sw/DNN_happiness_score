@@ -1,0 +1,497 @@
+
+# coding: utf-8
+
+# # 1. 데이터 및 사전 준비 단계
+
+# In[1]:
+
+
+import tensorflow as tf
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt #jupyter notebook에서 그래프 결과물을 바로 볼 수 있다. 
+import matplotlib
+import itertools
+
+from pylab import rcParams
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MinMaxScaler
+
+
+# In[2]:
+
+
+tf.logging.set_verbosity(tf.logging.INFO) #Sets the threshold for what messages will be logged.
+
+sess = tf.InteractiveSession()
+
+
+# In[3]:
+
+
+train = pd.read_csv("2016.csv") #train set : 2016년 세계 행복지수 data
+print("shape of the train data with all features : ", train.shape)
+train = train.select_dtypes(exclude = ['object']) #그 중에서 수치데이터가 아닌 항목은 제외시킵니다. <예) 국가이름>
+print(" ")
+print("shape of the train data with numerical features : ", train.shape) #shape를 확인합니다. 
+
+
+test = pd.read_csv("2017.csv") #test set : 2017년 세계 행복지수 data
+test = test.select_dtypes(exclude = ['object']) #그 중에서 수치데이터가 아닌 항목은 제외시킵니다. <예) 국가이름>
+print(" ")
+print("shape of the test data with numerical features : ", test.shape) #shape를 확인를 확인합니다. 
+
+print(" ")
+print("List of features contained our dataset : ", list(train.columns))
+
+
+# In[4]:
+
+
+train.head(10) #위의 10개만 출력하여 앞에서의 명령이 잘 실행되었는지 확인합니다. 
+
+
+# # 2. preprocessing 단계 : MinMaxScaler기능을 이용하여 normalization합니다. 
+
+# In[5]:
+
+
+import warnings
+warnings.filterwarnings('ignore') #경고메세지는 무시하고 숨깁니다. 
+
+col_train = list(train.columns)
+col_train_bis = list(train.columns)  
+
+col_train_bis.remove('HappinessScore') #HappinessScore을 output으로 예측하는 것이 우리의 목표이기 때문에 data에서 HappinessScore부분을 제거해 줍니다.
+col_train_bis.remove('Happiness.Rank') #Happines.Rank는 HappinessScore를 바탕으로 순위를 매겨놓은 것이기 때문에, featrue에서 제외시켜 줍니다.
+
+
+mat_train = np.matrix(train)
+print('mat train : ', mat_train.shape)
+mat_test  = np.matrix(test)
+print('mat tests : ', mat_test.shape)
+
+raw_X_train = np.matrix(train.drop('HappinessScore', axis = 1).drop('Happiness.Rank', axis = 1))#HappinessScore행을 빼서, feature들만 있는 matrix를 만듭니다. (이것이 X_train이 됩니다. )
+print('raw_x_train : ', raw_X_train.shape)
+raw_y_train = np.array(train.HappinessScore).reshape((155,1))#HappinessScore행만 있는 matrix를 만듭니다. (이것이 y_train이 됩니다. )
+print('raw_y_train : ', raw_y_train.shape)
+raw_X_test = np.matrix(test.drop('HappinessScore', axis = 1).drop('Happiness.Rank', axis = 1))#HappinessScore행을 빼서, feature들만 있는 matrix를 만듭니다. (이것이 X_test가 됩니다. )
+print('raw_x_test : ', raw_X_test.shape)
+raw_y_test = np.array(test.HappinessScore).reshape((155,1))#HappinessScore행만 있는 matrix를 만듭니다. (이것이 y_test이 됩니다. )
+print('raw_y_test : ', raw_y_test.shape)
+
+#그리고 다시한번 print기능을 이용하여 matrix의 shape를 확인하여서 연산에 이상이 없을지 확인합니다. 
+
+
+# In[6]:
+
+
+MMS_X_train = MinMaxScaler() # 그 후 데이터를 MinMaxScaler기능을 이용하여 normalize하여 들쑥날쑥한 데이터를 처리해 줍니다. 
+MMS_X_train.fit(raw_X_train)
+
+MMS_y_train = MinMaxScaler()
+MMS_y_train.fit(raw_y_train)
+
+MMS_X_test = MinMaxScaler()
+MMS_X_test.fit(raw_X_test)
+
+MMS_y_test = MinMaxScaler()
+MMS_y_test.fit(raw_y_test)
+
+X_train = pd.DataFrame(MMS_X_train.transform(raw_X_train), columns = col_train_bis)
+y_train = pd.DataFrame(MMS_y_train.transform(raw_y_train), columns = ['HappinessScore'])
+X_test = pd.DataFrame(MMS_X_test.transform(raw_X_test), columns = col_train_bis)
+y_test = pd.DataFrame(MMS_y_test.transform(raw_y_test), columns = ['HappinessScore'])
+
+X_train.head() #normalize가 잘 되었는지 데이터를 일부 출력하여 확인합니다. 
+
+
+# In[7]:
+
+
+# List of features
+COLUMNS = col_train
+FEATURES = col_train_bis
+LABEL = "HappinessScore"
+
+# Columns for tensorflow
+feature_cols = [tf.contrib.layers.real_valued_column(k) for k in FEATURES]
+#데이터 타입을 지정하기위해 colunm을 정의하는데, 모든 열이 실수이므로 
+#feature_cols = [tf.contrib.layers.real_valued_column을 이용합니다. 
+
+# Training set and Prediction set with the features to predict
+training_set = train[COLUMNS]
+prediction_set = train.HappinessScore
+
+# Train and Test 
+#x_train, x_test, y_train, y_test = train_test_split(training_set[FEATURES] , prediction_set, test_size=0.33, random_state=42)
+#y_train = pd.DataFrame(y_train, columns = [LABEL])
+
+training_set = pd.DataFrame(X_train, columns = FEATURES).merge(y_train, left_index = True, right_index = True)
+training_set.head()
+
+# Training for submission
+#training_sub = training_set[col_train]
+
+
+# In[8]:
+
+
+# Same thing but for the test set
+y_test = pd.DataFrame(y_test, columns = [LABEL])
+testing_set = pd.DataFrame(X_test, columns = FEATURES).merge(y_test, left_index = True, right_index = True)
+testing_set.head()
+
+
+# # 3. 딥 신경망 모델 구성단계 : tf.contrib.learn을 이용하여 Deep Neural Network Regressor을 만듭니다. 
+
+# In[9]:
+
+
+#reset the index of training
+training_set.reset_index(drop = True, inplace =True)
+def input_fn(data_set, pred = False):
+    
+    if pred == False:
+        
+        feature_cols = {k: tf.constant(data_set[k].values) for k in FEATURES}
+        labels = tf.constant(data_set[LABEL].values)
+        
+        return feature_cols, labels
+
+    if pred == True:
+        feature_cols = {k: tf.constant(data_set[k].values) for k in FEATURES}
+        
+    return feature_cols
+
+
+# Model 1 : DNN Regressor - 첫번째 모델은 200, 100, 50, 25, 12단위에 대해 5개의 숨겨진 layer가 있으며 Relu함수를 이용합니다.
+
+# In[10]:
+
+
+# Learn from training set
+tf.logging.set_verbosity(tf.logging.ERROR)
+DNNregressor = tf.contrib.learn.DNNRegressor(feature_columns=feature_cols, 
+                                          activation_fn = tf.nn.relu, hidden_units=[200, 100, 50, 25, 12])
+#DNN Regressor with the training set 
+DNNregressor.fit(input_fn=lambda: input_fn(training_set), steps=2000)
+
+
+# In[11]:
+
+
+#evaluation the test set by train set
+ev = DNNregressor.evaluate(input_fn=lambda: input_fn(testing_set), steps=2000) 
+
+#loss로 display the score on the test set
+loss_score1 = ev["loss"]
+print("Final Loss on the testing set: {0:f}".format(loss_score1)) #ReLu를 이용한 첫번째 모델에서의 loss값 입니다. 
+
+
+# In[12]:
+
+
+# predict testing set, calculate mse
+preds = DNNregressor.predict(input_fn=lambda: input_fn(testing_set))
+
+y_test_pred = []
+
+for i, pr in enumerate(preds):                   # y_test_pred에 predict값을 list 형태로 넣어줍니다.
+    y_test_pred.append(pr)
+    
+#print(y_test_pred)
+a = raw_y_test_pred = MMS_y_test.inverse_transform(np.array(y_test_pred).reshape(-1,1))
+
+b = y_test_real = raw_y_test.reshape(-1,1)
+
+#print(np.concatenate((np.array(a).reshape(-1,1), b), axis=1))
+
+mse = ((a-b)**2).mean(axis=0)
+print("Final Mean Square Error on the testing set : ", mse) #ReLu를 이용한 첫번째 모델에서 testing set의 mean square error값 입니다. 
+
+
+# In[13]:
+
+
+#Visualization
+
+predictions = pd.DataFrame(np.array(raw_y_test_pred).reshape(-1,1),columns = ['Prediction'])
+reality = pd.DataFrame(np.array(y_test_real).reshape(-1,1), columns = ['HappinessScore'])
+
+matplotlib.rc('xtick', labelsize=30) 
+matplotlib.rc('ytick', labelsize=30) 
+
+fig, ax = plt.subplots(figsize=(50, 40))
+
+plt.style.use('ggplot')
+plt.plot(predictions.values, reality.values, 'ro')
+plt.xlabel('Predictions', fontsize = 60)
+plt.ylabel('Reality', fontsize = 60)
+plt.title('Predictions x Reality (by ReLu) on dataset Test', fontsize = 70)
+ax.plot([reality.min(), reality.max()], [reality.min(), reality.max()], 'k--', lw=4)
+plt.show() #예상한 것을 matplotlib를 이용하여 그래프로 나타낸다. 
+
+
+# Model 2 : 두 번째 모델은 200, 100, 50, 25, 12단위에 대해 5개의 숨겨진 layer가 있으며  Leaky Relu함수를 이용합니다. 
+
+# In[14]:
+
+
+def leaky_relu(x):
+    return tf.nn.relu(x) - 0.01 * tf.nn.relu(-x)
+
+
+# In[15]:
+
+
+# Model
+DNNregressor2 = tf.contrib.learn.DNNRegressor(feature_columns=feature_cols, 
+                                          activation_fn = leaky_relu, hidden_units=[200, 100, 50, 25, 12])
+    
+# Deep Neural Network Regressor with the training set which contain the data split by train test split
+DNNregressor2.fit(input_fn=lambda: input_fn(training_set), steps=2000)
+
+
+# In[16]:
+
+
+# Evaluation on the test set created by train_test_split
+ev = DNNregressor2.evaluate(input_fn=lambda: input_fn(testing_set), steps=2000)
+
+# Display the score on the testing set
+# 0.002X in average
+loss_score2 = ev["loss"]
+print("Final Loss on the testing set with Leaky Relu: {0:f}".format(loss_score2))# Leaky ReLu를 이용한 두번째 모델에서의 loss값 입니다. 
+
+
+# In[17]:
+
+
+# predict testing set, calculate mse
+preds = DNNregressor2.predict(input_fn=lambda: input_fn(testing_set))
+
+y_test_pred = []
+
+for i, pr in enumerate(preds):                   # y_test_pred에 predict값을 list 형태로 넣어줍니다.
+    y_test_pred.append(pr)
+    
+#print(y_test_pred)
+a = raw_y_test_pred = MMS_y_test.inverse_transform(np.array(y_test_pred).reshape(-1,1))
+
+b = y_test_real = raw_y_test.reshape(-1,1)
+
+#print(np.concatenate((np.array(a).reshape(-1,1), b), axis=1))
+
+mse2 = ((a-b)**2).mean(axis=0)
+print("Final Mean Square Error on the testing set : ", mse2) #ReLu를 이용한 첫번째 모델에서 testing set의 mean square error값 입니다. 
+
+
+# In[18]:
+
+
+#Visualization
+
+predictions = pd.DataFrame(np.array(raw_y_test_pred).reshape(-1,1),columns = ['Prediction'])
+reality = pd.DataFrame(np.array(y_test_real).reshape(-1,1), columns = ['HappinessScore'])
+
+matplotlib.rc('xtick', labelsize=30) 
+matplotlib.rc('ytick', labelsize=30) 
+
+fig, ax = plt.subplots(figsize=(50, 40))
+
+plt.style.use('ggplot')
+plt.plot(predictions.values, reality.values, 'ro')
+plt.xlabel('Predictions', fontsize = 60)
+plt.ylabel('Reality', fontsize = 60)
+plt.title('Predictions x Reality (by Leaky ReLu) on dataset Test', fontsize = 70)
+ax.plot([reality.min(), reality.max()], [reality.min(), reality.max()], 'k--', lw=4)
+plt.show() #예상한 것을 matplotlib를 이용하여 그래프로 나타낸다. 
+
+
+# Model 3 : DNN Linear Combined Regressor - 세 번째 모델은 200, 100, 50, 25, 12단위에 대해 5개의 숨겨진 layer가 있으며 Relu함수를 이용합니다.
+
+# In[19]:
+
+
+DLCR = tf.contrib.learn.DNNLinearCombinedRegressor(linear_feature_columns=feature_cols, 
+                                                   dnn_feature_columns=feature_cols, dnn_hidden_units=[200, 100, 50, 25, 12])
+DLCR.fit(input_fn=lambda: input_fn(training_set), steps=2000)
+DLCR.evaluate(input_fn=lambda: input_fn(training_set), steps=2000)
+
+
+# In[20]:
+
+
+# Evaluation on the test set created by train_test_split
+ev = DLCR.evaluate(input_fn=lambda: input_fn(testing_set), steps=2000)
+
+# Display the score on the testing set
+# 0.002X in average
+loss_score3 = ev["loss"]
+print("Final Loss on the testing set with DLCR: {0:f}".format(loss_score3))# DLCR을 이용한 두번째 모델에서의 loss값 입니다. 
+
+
+# In[21]:
+
+
+# predict testing set, calculate mse
+preds = DLCR.predict(input_fn=lambda: input_fn(testing_set))
+
+y_test_pred = []
+
+for i, pr in enumerate(preds):                   # y_test_pred에 predict값을 list 형태로 넣어줍니다.
+    y_test_pred.append(pr)
+    
+#print(y_test_pred)
+a = raw_y_test_pred = MMS_y_test.inverse_transform(np.array(y_test_pred).reshape(-1,1))
+
+b = y_test_real = raw_y_test.reshape(-1,1)
+
+#print(np.concatenate((np.array(a).reshape(-1,1), b), axis=1))
+
+mse3 = ((a-b)**2).mean(axis=0)
+print("Final Mean Square Error on the testing set : ", mse3) #ReLu를 이용한 첫번째 모델에서 training set의 mean square error값 입니다. 
+
+
+# In[22]:
+
+
+#Visualization
+
+predictions = pd.DataFrame(np.array(raw_y_test_pred).reshape(-1,1),columns = ['Prediction'])
+reality = pd.DataFrame(np.array(y_test_real).reshape(-1,1), columns = ['HappinessScore'])
+
+matplotlib.rc('xtick', labelsize=30) 
+matplotlib.rc('ytick', labelsize=30) 
+
+fig, ax = plt.subplots(figsize=(50, 40))
+
+plt.style.use('ggplot')
+plt.plot(predictions.values, reality.values, 'ro')
+plt.xlabel('Predictions', fontsize = 60)
+plt.ylabel('Reality', fontsize = 60)
+plt.title('Predictions x Reality (by DNN Linear Combined Regression) on dataset Test', fontsize = 70)
+ax.plot([reality.min(), reality.max()], [reality.min(), reality.max()], 'k--', lw=4)
+plt.show() #예상한 것을 matplotlib를 이용하여 그래프로 나타냅니다. 
+
+
+# Model 4 : Linear Regressor - 네 번째 모델은 선형 회귀 모델입니다.
+
+# In[23]:
+
+
+#DNNLinearCombinedRegressor = tf.contrib.learn.DNNLinearCombinedRegressor(feature_columns=feature_cols,activation_fn = tf.nn.relu, hidden_units=[200, 100, 50, 25, 12])
+
+LR = tf.contrib.learn.LinearRegressor(feature_columns=feature_cols)
+LR.fit(input_fn=lambda: input_fn(training_set), steps=2000)
+LR.evaluate(input_fn=lambda: input_fn(training_set), steps=2000)
+
+
+# In[24]:
+
+
+# Evaluation on the test set created by train_test_split
+ev = LR.evaluate(input_fn=lambda: input_fn(testing_set), steps=2000)
+
+# Display the score on the testing set
+# 0.002X in average
+loss_score4 = ev["loss"]
+print("Final Loss on the testing set with LR: {0:f}".format(loss_score4))# LR을 이용한 두번째 모델에서의 loss값 입니다. 
+
+
+# In[25]:
+
+
+# predict testing set, calculate mse
+preds = LR.predict(input_fn=lambda: input_fn(testing_set))
+
+y_test_pred = []
+
+for i, pr in enumerate(preds):                   # y_test_pred에 predict값을 list 형태로 넣어줍니다.
+    y_test_pred.append(pr)
+    
+#print(y_test_pred)
+a = raw_y_test_pred = MMS_y_test.inverse_transform(np.array(y_test_pred).reshape(-1,1))
+
+b = y_test_real = raw_y_test.reshape(-1,1)
+
+#print(np.concatenate((np.array(a).reshape(-1,1), b), axis=1))
+
+mse4 = ((a-b)**2).mean(axis=0)
+print("Final Mean Square Error on the testing set : ", mse4) #ReLu를 이용한 첫번째 모델에서 training set의 mean square error값 입니다. 
+
+
+# In[26]:
+
+
+#Visualization
+
+predictions = pd.DataFrame(np.array(raw_y_test_pred).reshape(-1,1),columns = ['Prediction'])
+reality = pd.DataFrame(np.array(y_test_real).reshape(-1,1), columns = ['HappinessScore'])
+
+matplotlib.rc('xtick', labelsize=30) 
+matplotlib.rc('ytick', labelsize=30) 
+
+fig, ax = plt.subplots(figsize=(50, 40))
+
+plt.style.use('ggplot')
+plt.plot(predictions.values, reality.values, 'ro')
+plt.xlabel('Predictions', fontsize = 60)
+plt.ylabel('Reality', fontsize = 60)
+plt.title('Predictions x Reality (by DNN Linear Combined Regression) on dataset Test', fontsize = 70)
+ax.plot([reality.min(), reality.max()], [reality.min(), reality.max()], 'k--', lw=4)
+plt.show() #예상한 것을 matplotlib를 이용하여 그래프로 나타낸다. 
+
+
+# # 4. 최종 결과 정리 단계
+
+# In[27]:
+
+
+list_score = [loss_score1, loss_score2, loss_score3, loss_score4]
+list_model = ['Relu_cont', 'LRelu_cont', 'DLCR_cont', 'LR_cont']
+
+
+# In[28]:
+
+
+import matplotlib.pyplot as plt; plt.rcdefaults()
+
+plt.style.use('ggplot')
+objects = list_model
+y_pos = np.arange(len(objects))
+performance = list_score
+ 
+plt.barh(y_pos, performance, align='center', alpha=0.9)
+plt.yticks(y_pos, objects)
+plt.xlabel('Loss ')
+plt.title('Model compared without hypertuning')
+ 
+plt.show()
+
+
+# In[29]:
+
+
+list_mse = [np.asscalar(mse), np.asscalar(mse2), np.asscalar(mse3), np.asscalar(mse4)]
+list_label = ['DNN_Relu_test', 'DNN_LeakyRelu_test', 'DLCR_Relu_test', 'LR_test']
+
+
+# In[30]:
+
+
+import matplotlib.pyplot as plt; plt.rcdefaults()
+
+plt.style.use('ggplot')
+objects = list_label
+y_pos = np.arange(len(objects))
+performance = list_mse
+ 
+plt.barh(y_pos, performance, align='center', alpha=0.9)
+plt.yticks(y_pos, objects)
+plt.xlabel('Loss ')
+plt.title('Model compared without hypertuning')
+ 
+plt.show()
+
